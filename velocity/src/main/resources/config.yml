@@ -1,0 +1,9 @@
+discord:
+  token: ""
+  guild-id: ""
+  channel-id: ""
+  webhook-name: "Minecraft Chat"
+link-code-minutes: 10
+messages:
+  minecraft-format: "[Discord] <{name}> {message}"
+  discord-format: "[{server}/{channel}] **{name}**: {message}"
