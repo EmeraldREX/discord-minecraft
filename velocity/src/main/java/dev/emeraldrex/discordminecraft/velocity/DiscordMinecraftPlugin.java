@@ -2,7 +2,7 @@ package dev.emeraldrex.discordminecraft.velocity;
 
 import com.github.ucchyocean.lc3.member.ChannelMember;
 import com.github.ucchyocean.lc3.member.ChannelMemberVelocityPlayer;
-import com.github.ucchyocean.lc3.velocity.event.LunaChatVelocityChannelChatEvent;
+import com.github.ucchyocean.lc3.velocity.event.LunaChatVelocityChannelMessageEvent;
 import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.event.Subscribe;
@@ -30,7 +30,7 @@ import java.time.Clock;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.1.2",
+@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.1.3",
         description = "Authenticated bidirectional Discord and LunaChat bridge", authors = {"EmeraldREX"},
         dependencies = {@com.velocitypowered.api.plugin.Dependency(id = "lunachat")})
 public final class DiscordMinecraftPlugin {
@@ -68,14 +68,17 @@ public final class DiscordMinecraftPlugin {
                 .addEventListeners(discord).build().awaitReady();
         Guild guild = jda.getGuildById(config.guildId());
         if (guild == null) throw new IllegalStateException("Configured Discord guild is not accessible");
+        var channel = jda.getTextChannelById(config.channelId());
+        if (channel == null || channel.getGuild().getIdLong() != guild.getIdLong())
+            throw new IllegalStateException("Configured Discord channel is not an accessible text channel in the configured guild");
         guild.updateCommands().addCommands(Commands.slash("minecraft", "Minecraft account integration")
                 .addSubcommands(new SubcommandData("link", "Link your Minecraft account")
                         .addOption(OptionType.STRING, "code", "Code shown by /discord link", true))).queue();
         logger.info("Discord bridge connected as {}", jda.getSelfUser().getName());
     }
 
-    @Subscribe public void onLunaChat(LunaChatVelocityChannelChatEvent event) {
-        if (event.isCancelled() || discord == null) return;
+    @Subscribe public void onLunaChat(LunaChatVelocityChannelMessageEvent event) {
+        if (discord == null) return;
         ChannelMember member = event.getMember();
         if (member == null) return;
         var player = member instanceof ChannelMemberVelocityPlayer velocityMember
@@ -84,8 +87,19 @@ public final class DiscordMinecraftPlugin {
         if (player == null) return;
         runAsync(() -> {
             Account account = store.findByMinecraft(player.getUniqueId()).orElse(null);
-            if (account != null && account.sendEnabled()) discord.sendMinecraftMessage(
-                    member.getServerName(), event.getChannelName(), member.getDisplayName(), event.getNgMaskedMessage());
+            if (account == null) {
+                logger.info("Skipping LunaChat message from {}: Discord account is not linked", player.getUsername());
+                return;
+            }
+            if (!account.sendEnabled()) {
+                logger.info("Skipping LunaChat message from {}: send toggle is OFF", player.getUsername());
+                return;
+            }
+            String server = player.getCurrentServer().map(connection -> connection.getServerInfo().getName())
+                    .orElse(member.getServerName());
+            logger.info("Forwarding LunaChat message from {} on {}/{} to Discord", player.getUsername(),
+                    server, event.getChannelName());
+            discord.sendMinecraftMessage(server, event.getChannelName(), event.getDisplayName(), event.getOriginalMessage());
         });
     }
 
@@ -122,5 +136,6 @@ public final class DiscordMinecraftPlugin {
     PluginConfig config() { return config; }
     AccountStore store() { return store; }
     JDA jda() { return jda; }
+    void logDiscordSendFailure(Throwable error) { logger.error("Discord message send failed", error); }
     @FunctionalInterface interface ThrowingRunnable { void run() throws Exception; }
 }

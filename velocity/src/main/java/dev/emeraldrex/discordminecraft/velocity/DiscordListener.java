@@ -43,7 +43,8 @@ final class DiscordListener extends ListenerAdapter {
                 .replace("{server}", safe(server)).replace("{channel}", safe(channel))
                 .replace("{name}", safe(name)).replace("{message}", safe(message));
         if (rendered.length() > 2_000) rendered = rendered.substring(0, 1_997) + "...";
-        target.sendMessage(rendered).setAllowedMentions(java.util.List.of()).queue();
+        target.sendMessage(rendered).setAllowedMentions(java.util.List.of()).queue(
+                ignored -> { }, plugin::logDiscordSendFailure);
     }
 
     private static String safe(String value) {
