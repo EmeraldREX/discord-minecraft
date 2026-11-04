@@ -1,5 +1,6 @@
 package dev.emeraldrex.discordminecraft.velocity;
 
+import com.github.ucchyocean.lc3.member.ChannelMember;
 import com.github.ucchyocean.lc3.member.ChannelMemberVelocityPlayer;
 import com.github.ucchyocean.lc3.velocity.event.LunaChatVelocityChannelChatEvent;
 import com.google.inject.Inject;
@@ -29,7 +30,7 @@ import java.time.Clock;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.1.1",
+@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.1.2",
         description = "Authenticated bidirectional Discord and LunaChat bridge", authors = {"EmeraldREX"},
         dependencies = {@com.velocitypowered.api.plugin.Dependency(id = "lunachat")})
 public final class DiscordMinecraftPlugin {
@@ -74,9 +75,13 @@ public final class DiscordMinecraftPlugin {
     }
 
     @Subscribe public void onLunaChat(LunaChatVelocityChannelChatEvent event) {
-        if (event.isCancelled() || !(event.getMember() instanceof ChannelMemberVelocityPlayer member)) return;
-        var player = member.getPlayer();
-        if (player == null || discord == null) return;
+        if (event.isCancelled() || discord == null) return;
+        ChannelMember member = event.getMember();
+        if (member == null) return;
+        var player = member instanceof ChannelMemberVelocityPlayer velocityMember
+                ? velocityMember.getPlayer()
+                : proxy.getPlayer(member.getName()).orElse(null);
+        if (player == null) return;
         runAsync(() -> {
             Account account = store.findByMinecraft(player.getUniqueId()).orElse(null);
             if (account != null && account.sendEnabled()) discord.sendMinecraftMessage(
