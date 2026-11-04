@@ -30,10 +30,15 @@ import org.slf4j.Logger;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.1.4",
+@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.1.5",
         description = "Authenticated bidirectional Discord and LunaChat bridge", authors = {"EmeraldREX"},
         dependencies = {@com.velocitypowered.api.plugin.Dependency(id = "lunachat")})
 public final class DiscordMinecraftPlugin {
@@ -41,6 +46,7 @@ public final class DiscordMinecraftPlugin {
     private final Logger logger;
     private final Path dataDirectory;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    private final ConcurrentMap<UUID, RecentChat> recentChats = new ConcurrentHashMap<>();
     private PluginConfig config;
     private AccountStore store;
     private JDA jda;
@@ -88,6 +94,14 @@ public final class DiscordMinecraftPlugin {
         ChannelMember member = chat.member();
         var player = proxy.getPlayer(member.getName()).orElse(null);
         if (player == null) return;
+        Instant now = Instant.now();
+        RecentChat current = new RecentChat(chat.message(), now);
+        RecentChat previous = recentChats.put(player.getUniqueId(), current);
+        if (previous != null && previous.message().equals(current.message())
+                && Duration.between(previous.receivedAt(), now).abs().compareTo(Duration.ofSeconds(2)) < 0) {
+            logger.info("Ignoring duplicate LunaChat message from {}", player.getUsername());
+            return;
+        }
         runAsync(() -> {
             Account account = store.findByMinecraft(player.getUniqueId()).orElse(null);
             if (account == null) {
@@ -142,5 +156,6 @@ public final class DiscordMinecraftPlugin {
     AccountStore store() { return store; }
     JDA jda() { return jda; }
     void logDiscordSendFailure(Throwable error) { logger.error("Discord message send failed", error); }
+    private record RecentChat(String message, Instant receivedAt) { }
     @FunctionalInterface interface ThrowingRunnable { void run() throws Exception; }
 }
