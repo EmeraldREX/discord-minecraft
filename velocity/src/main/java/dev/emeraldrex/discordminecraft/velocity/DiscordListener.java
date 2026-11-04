@@ -3,8 +3,11 @@ package dev.emeraldrex.discordminecraft.velocity;
 import dev.emeraldrex.discordminecraft.store.Account;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
+import net.dv8tion.jda.api.events.guild.GuildBanEvent;
+import net.dv8tion.jda.api.events.guild.GuildUnbanEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.entities.UserSnowflake;
 import org.jetbrains.annotations.NotNull;
 
 final class DiscordListener extends ListenerAdapter {
@@ -33,6 +36,32 @@ final class DiscordListener extends ListenerAdapter {
         if (message.isEmpty()) return;
         plugin.runAsync(() -> plugin.receiveDiscordMessage(event.getAuthor().getIdLong(),
                 event.getMember() == null ? event.getAuthor().getName() : event.getMember().getEffectiveName(), message));
+    }
+
+    @Override public void onGuildBan(@NotNull GuildBanEvent event) {
+        if (event.getGuild().getIdLong() == plugin.config().guildId())
+            plugin.runAsync(() -> plugin.applyDiscordBan(event.getUser().getIdLong()));
+    }
+
+    @Override public void onGuildUnban(@NotNull GuildUnbanEvent event) {
+        if (event.getGuild().getIdLong() == plugin.config().guildId())
+            plugin.runAsync(() -> plugin.applyDiscordUnban(event.getUser().getIdLong()));
+    }
+
+    void banDiscord(long discordId, String reason) {
+        if (plugin.jda() == null) return;
+        var guild = plugin.jda().getGuildById(plugin.config().guildId());
+        if (guild == null) return;
+        guild.ban(UserSnowflake.fromId(discordId), 0, java.util.concurrent.TimeUnit.SECONDS)
+                .reason(reason).queue(ignored -> { }, plugin::logDiscordSendFailure);
+    }
+
+    void unbanDiscord(long discordId, String reason) {
+        if (plugin.jda() == null) return;
+        var guild = plugin.jda().getGuildById(plugin.config().guildId());
+        if (guild == null) return;
+        guild.unban(UserSnowflake.fromId(discordId)).reason(reason)
+                .queue(ignored -> { }, plugin::logDiscordSendFailure);
     }
 
     void sendMinecraftMessage(String server, String channel, String name, String message) {

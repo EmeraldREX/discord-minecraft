@@ -58,6 +58,15 @@ public final class AccountStore implements AutoCloseable {
                     expires_at INTEGER NOT NULL
                 )
                 """);
+            statement.execute("""
+                CREATE TABLE IF NOT EXISTS network_bans (
+                    minecraft_uuid TEXT PRIMARY KEY,
+                    minecraft_name TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    banned_at INTEGER NOT NULL
+                )
+                """);
         }
     }
 
@@ -141,6 +150,11 @@ public final class AccountStore implements AutoCloseable {
         return find("SELECT * FROM accounts WHERE discord_id=?", statement -> statement.setLong(1, id));
     }
 
+    public synchronized Optional<Account> findByMinecraftName(String name) throws SQLException {
+        return find("SELECT * FROM accounts WHERE minecraft_name=? COLLATE NOCASE",
+                statement -> statement.setString(1, name));
+    }
+
     public synchronized List<Account> receiveEnabledAccounts() throws SQLException {
         List<Account> accounts = new ArrayList<>();
         try (PreparedStatement query = connection.prepareStatement("SELECT * FROM accounts WHERE receive_enabled=1");
@@ -162,6 +176,43 @@ public final class AccountStore implements AutoCloseable {
         try (PreparedStatement statement = connection.prepareStatement("DELETE FROM accounts WHERE minecraft_uuid=?")) {
             statement.setString(1, id.toString());
             return statement.executeUpdate() == 1;
+        }
+    }
+
+    public synchronized void ban(UUID id, String name, String reason, String source) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO network_bans(minecraft_uuid,minecraft_name,reason,source,banned_at)
+                VALUES(?,?,?,?,?)
+                ON CONFLICT(minecraft_uuid) DO UPDATE SET
+                    minecraft_name=excluded.minecraft_name,
+                    reason=excluded.reason,
+                    source=excluded.source,
+                    banned_at=excluded.banned_at
+                """)) {
+            statement.setString(1, id.toString());
+            statement.setString(2, name);
+            statement.setString(3, reason);
+            statement.setString(4, source);
+            statement.setLong(5, clock.millis());
+            statement.executeUpdate();
+        }
+    }
+
+    public synchronized boolean unban(UUID id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "DELETE FROM network_bans WHERE minecraft_uuid=?")) {
+            statement.setString(1, id.toString());
+            return statement.executeUpdate() == 1;
+        }
+    }
+
+    public synchronized Optional<String> banReason(UUID id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT reason FROM network_bans WHERE minecraft_uuid=?")) {
+            statement.setString(1, id.toString());
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(result.getString(1)) : Optional.empty();
+            }
         }
     }
 

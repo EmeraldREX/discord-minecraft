@@ -7,8 +7,11 @@ import com.github.ucchyocean.lc3.messaging.BukkitChatMessage;
 import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.event.PostOrder;
+import com.velocitypowered.api.event.ResultedEvent;
 import com.velocitypowered.api.event.Subscribe;
+import com.velocitypowered.api.event.command.CommandExecuteEvent;
 import com.velocitypowered.api.event.connection.PluginMessageEvent;
+import com.velocitypowered.api.event.connection.LoginEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
@@ -35,7 +38,7 @@ import java.time.Clock;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.1.6",
+@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.2.0",
         description = "Authenticated bidirectional Discord and LunaChat bridge", authors = {"EmeraldREX"},
         dependencies = {@com.velocitypowered.api.plugin.Dependency(id = "lunachat")})
 public final class DiscordMinecraftPlugin {
@@ -69,7 +72,8 @@ public final class DiscordMinecraftPlugin {
 
     private void startDiscord() throws InterruptedException {
         discord = new DiscordListener(this);
-        jda = JDABuilder.createDefault(config.token(), GatewayIntent.GUILD_MESSAGES, GatewayIntent.MESSAGE_CONTENT)
+        jda = JDABuilder.createDefault(config.token(), GatewayIntent.GUILD_MESSAGES,
+                        GatewayIntent.MESSAGE_CONTENT, GatewayIntent.GUILD_MODERATION)
                 .addEventListeners(discord).build().awaitReady();
         Guild guild = jda.getGuildById(config.guildId());
         if (guild == null) throw new IllegalStateException("Configured Discord guild is not accessible");
@@ -111,6 +115,66 @@ public final class DiscordMinecraftPlugin {
                     server, channelName);
             discord.sendMinecraftMessage(server, channelName, member.getDisplayName(), chat.message());
         });
+    }
+
+    @Subscribe public void onLogin(LoginEvent event) {
+        try {
+            String reason = store.banReason(event.getPlayer().getUniqueId()).orElse(null);
+            if (reason != null) event.setResult(ResultedEvent.ComponentResult.denied(
+                    Component.text("このMinecraftネットワークからBANされています: " + reason)));
+        } catch (SQLException exception) {
+            logger.error("Could not check network ban for {}", event.getPlayer().getUsername(), exception);
+        }
+    }
+
+    @Subscribe(order = PostOrder.LAST)
+    public void onCommand(CommandExecuteEvent event) {
+        String command = event.getCommand().strip();
+        if (command.startsWith("/")) command = command.substring(1);
+        String[] parts = command.split("\\s+", 3);
+        if (parts.length < 2) return;
+        String action = parts[0].toLowerCase(java.util.Locale.ROOT);
+        if (!action.equals("ban") && !action.equals("pardon")) return;
+        if (event.getCommandSource() instanceof Player player
+                && !player.hasPermission("discordminecraft.bansync")) return;
+        String targetName = parts[1];
+        String reason = parts.length == 3 ? parts[2] : "Minecraft administrator ban";
+        runAsync(() -> synchronizeMinecraftBan(action, targetName, reason));
+    }
+
+    private void synchronizeMinecraftBan(String action, String targetName, String reason) throws SQLException {
+        Account account = store.findByMinecraftName(targetName).orElse(null);
+        if (account == null) {
+            logger.info("BAN sync skipped for {}: Discord account is not linked", targetName);
+            return;
+        }
+        if (action.equals("ban")) {
+            store.ban(account.minecraftId(), account.minecraftName(), reason, "minecraft");
+            discord.banDiscord(account.discordId(), "Minecraft BAN: " + reason);
+            proxy.getPlayer(account.minecraftId()).ifPresent(player ->
+                    player.disconnect(Component.text("BANされました: " + reason)));
+            logger.info("Synchronized Minecraft BAN for {} to Discord", account.minecraftName());
+        } else {
+            store.unban(account.minecraftId());
+            discord.unbanDiscord(account.discordId(), "Minecraft pardon");
+            logger.info("Synchronized Minecraft pardon for {} to Discord", account.minecraftName());
+        }
+    }
+
+    void applyDiscordBan(long discordId) throws SQLException {
+        Account account = store.findByDiscord(discordId).orElse(null);
+        if (account == null) return;
+        store.ban(account.minecraftId(), account.minecraftName(), "Discord server BAN", "discord");
+        proxy.getPlayer(account.minecraftId()).ifPresent(player ->
+                player.disconnect(Component.text("DiscordサーバーでBANされたため切断されました。")));
+        logger.info("Synchronized Discord BAN for {} to Minecraft", account.minecraftName());
+    }
+
+    void applyDiscordUnban(long discordId) throws SQLException {
+        Account account = store.findByDiscord(discordId).orElse(null);
+        if (account == null) return;
+        store.unban(account.minecraftId());
+        logger.info("Synchronized Discord unban for {} to Minecraft", account.minecraftName());
     }
 
     void receiveDiscordMessage(long discordId, String discordName, String message) throws SQLException {

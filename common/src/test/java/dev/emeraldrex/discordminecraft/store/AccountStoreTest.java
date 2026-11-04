@@ -55,4 +55,18 @@ class AccountStoreTest {
             assertFalse(relinked.receiveEnabled());
         }
     }
+
+    @Test void networkBanSurvivesAccountUnlinkUntilExplicitlyPardoned() throws Exception {
+        UUID player = UUID.randomUUID();
+        try (AccountStore store = new AccountStore(temp.resolve("test.db"), Clock.systemUTC())) {
+            String code = store.createLinkCode(player, "Alex", Duration.ofMinutes(10));
+            store.claimLinkCode(code, 42L).orElseThrow();
+            store.ban(player, "Alex", "Discord ban", "discord");
+            assertEquals("Discord ban", store.banReason(player).orElseThrow());
+            store.unlink(player);
+            assertEquals("Discord ban", store.banReason(player).orElseThrow());
+            assertTrue(store.unban(player));
+            assertTrue(store.banReason(player).isEmpty());
+        }
+    }
 }
