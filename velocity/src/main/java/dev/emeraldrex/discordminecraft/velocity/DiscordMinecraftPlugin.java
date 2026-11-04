@@ -1,11 +1,14 @@
 package dev.emeraldrex.discordminecraft.velocity;
 
+import com.github.ucchyocean.lc3.LunaChat;
+import com.github.ucchyocean.lc3.channel.Channel;
 import com.github.ucchyocean.lc3.member.ChannelMember;
-import com.github.ucchyocean.lc3.member.ChannelMemberVelocityPlayer;
-import com.github.ucchyocean.lc3.velocity.event.LunaChatVelocityChannelMessageEvent;
+import com.github.ucchyocean.lc3.messaging.BukkitChatMessage;
 import com.google.inject.Inject;
 import com.velocitypowered.api.command.CommandMeta;
+import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
+import com.velocitypowered.api.event.connection.PluginMessageEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
@@ -30,7 +33,7 @@ import java.time.Clock;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.1.3",
+@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.1.4",
         description = "Authenticated bidirectional Discord and LunaChat bridge", authors = {"EmeraldREX"},
         dependencies = {@com.velocitypowered.api.plugin.Dependency(id = "lunachat")})
 public final class DiscordMinecraftPlugin {
@@ -77,13 +80,13 @@ public final class DiscordMinecraftPlugin {
         logger.info("Discord bridge connected as {}", jda.getSelfUser().getName());
     }
 
-    @Subscribe public void onLunaChat(LunaChatVelocityChannelMessageEvent event) {
-        if (discord == null) return;
-        ChannelMember member = event.getMember();
-        if (member == null) return;
-        var player = member instanceof ChannelMemberVelocityPlayer velocityMember
-                ? velocityMember.getPlayer()
-                : proxy.getPlayer(member.getName()).orElse(null);
+    @Subscribe(order = PostOrder.LAST)
+    public void onLunaChatPluginMessage(PluginMessageEvent event) {
+        if (discord == null || !event.getIdentifier().getId().equals("lunachat:message")) return;
+        BukkitChatMessage chat = BukkitChatMessage.fromByteArray(event.getData());
+        if (chat == null || chat.member() == null || chat.message() == null) return;
+        ChannelMember member = chat.member();
+        var player = proxy.getPlayer(member.getName()).orElse(null);
         if (player == null) return;
         runAsync(() -> {
             Account account = store.findByMinecraft(player.getUniqueId()).orElse(null);
@@ -97,9 +100,11 @@ public final class DiscordMinecraftPlugin {
             }
             String server = player.getCurrentServer().map(connection -> connection.getServerInfo().getName())
                     .orElse(member.getServerName());
+            Channel channel = LunaChat.getAPI().getDefaultChannel(player.getUsername());
+            String channelName = channel == null ? "LunaChat" : channel.getName();
             logger.info("Forwarding LunaChat message from {} on {}/{} to Discord", player.getUsername(),
-                    server, event.getChannelName());
-            discord.sendMinecraftMessage(server, event.getChannelName(), event.getDisplayName(), event.getOriginalMessage());
+                    server, channelName);
+            discord.sendMinecraftMessage(server, channelName, member.getDisplayName(), chat.message());
         });
     }
 
