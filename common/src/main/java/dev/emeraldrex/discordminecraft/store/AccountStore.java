@@ -21,8 +21,19 @@ public final class AccountStore implements AutoCloseable {
 
     public AccountStore(Path database, Clock clock) throws SQLException {
         this.clock = clock;
+        loadSqliteDriver();
         this.connection = DriverManager.getConnection("jdbc:sqlite:" + database.toAbsolutePath());
         initialize();
+    }
+
+    private static void loadSqliteDriver() throws SQLException {
+        try {
+            // Velocity isolates plugins in their own class loaders. DriverManager's
+            // service discovery cannot reliably see a shaded JDBC driver there.
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException exception) {
+            throw new SQLException("The bundled SQLite JDBC driver could not be loaded", exception);
+        }
     }
 
     private void initialize() throws SQLException {

@@ -16,7 +16,7 @@ Velocity 上の LunaChat と Discord を、Minecraft アカウント認証付き
 ./gradlew clean build
 ```
 
-生成物は `velocity/build/libs/velocity-0.1.0-SNAPSHOT.jar` です。Velocity の `plugins/` に配置してください。`DISCORD_BOT_TOKEN`、`DISCORD_GUILD_ID`、`DISCORD_CHANNEL_ID` 環境変数を推奨し、未設定の項目だけ `plugins/discordminecraft/config.yml` の値を使います。Bot には連携チャンネルの View Channel、Send Messages、Read Message History 権限と Message Content Intent が必要です。
+生成物は `velocity/build/libs/velocity-0.1.1.jar` です。Velocity の `plugins/` に配置してください。`DISCORD_BOT_TOKEN`、`DISCORD_GUILD_ID`、`DISCORD_CHANNEL_ID` 環境変数を推奨し、未設定の項目だけ `plugins/discordminecraft/config.yml` の値を使います。Bot には連携チャンネルの View Channel、Send Messages、Read Message History 権限と Message Content Intent が必要です。
 
 ## 利用方法
 

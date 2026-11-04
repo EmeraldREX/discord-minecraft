@@ -29,7 +29,7 @@ import java.time.Clock;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.1.0-SNAPSHOT",
+@Plugin(id = "discordminecraft", name = "DiscordMinecraft", version = "0.1.1",
         description = "Authenticated bidirectional Discord and LunaChat bridge", authors = {"EmeraldREX"},
         dependencies = {@com.velocitypowered.api.plugin.Dependency(id = "lunachat")})
 public final class DiscordMinecraftPlugin {

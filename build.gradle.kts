@@ -4,7 +4,7 @@ plugins {
 
 allprojects {
     group = "dev.emeraldrex.discordminecraft"
-    version = "0.1.0-SNAPSHOT"
+    version = "0.1.1"
 
     repositories {
         mavenCentral()
